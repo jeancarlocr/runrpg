@@ -1,5 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import { registerSshIpc } from './ssh/ipc'
+import { sshSession } from './ssh/sshSession'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -21,6 +23,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerSshIpc()
   createWindow()
 
   app.on('activate', function () {
@@ -30,4 +33,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  sshSession.disconnect()
 })

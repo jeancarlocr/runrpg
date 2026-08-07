@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "noEmit": true,
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -8,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["electron-vite/node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*"]
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

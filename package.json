@@ -1,8 +1,8 @@
 {
   "name": "runrpg",
   "version": "0.1.0",
-  "description": "Scratchpad de escritorio para practicar RPG Full Free contra un IBM i real (estilo RunJS)",
-  "main": "dist/main/index.js",
+  "description": "Desktop scratchpad for practicing RPG Full Free against a real IBM i (RunJS-style)",
+  "main": "out/main/index.js",
   "author": "Jean",
   "license": "MIT",
   "scripts": {

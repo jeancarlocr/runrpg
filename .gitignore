@@ -3,3 +3,9 @@ dist
 out
 .DS_Store
 *.log
+runrpg.local.json
+*.tsbuildinfo
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+!src/renderer/src/runrpg.d.ts

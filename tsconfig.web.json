@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "noEmit": true,
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
@@ -10,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src/renderer/src/**/*"]
+  "include": ["src/renderer/src/**/*", "src/shared/**/*"]
 }

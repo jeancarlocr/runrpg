@@ -1,9 +1,19 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import { SSH_CHANNELS } from '../shared/ssh-types'
+import type { CommandResult, ConnectResult, SshStatusPayload } from '../shared/ssh-types'
 
-// A partir de la Fase 1 (sesión SSH persistente) aquí se expondrán
-// funciones como window.runrpg.connect(), .run(source), etc.
-// que llamen por ipcRenderer al proceso main, que es el único
-// que debe tocar ssh2 directamente.
+// Only bridge to the main process: the renderer never imports ssh2 or
+// touches credentials, it only invokes these methods over IPC.
 contextBridge.exposeInMainWorld('runrpg', {
-  version: '0.1.0'
+  version: '0.1.0',
+  ssh: {
+    connect: (): Promise<ConnectResult> => ipcRenderer.invoke(SSH_CHANNELS.CONNECT),
+    run: (command: string): Promise<CommandResult> => ipcRenderer.invoke(SSH_CHANNELS.RUN, command),
+    disconnect: (): Promise<void> => ipcRenderer.invoke(SSH_CHANNELS.DISCONNECT),
+    onStatus: (callback: (payload: SshStatusPayload) => void): (() => void) => {
+      const listener = (_event: unknown, payload: SshStatusPayload): void => callback(payload)
+      ipcRenderer.on(SSH_CHANNELS.STATUS, listener)
+      return () => ipcRenderer.removeListener(SSH_CHANNELS.STATUS, listener)
+    }
+  }
 })

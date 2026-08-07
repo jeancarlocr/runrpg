@@ -73,3 +73,36 @@ body {
   color: var(--phosphor);
   font-family: 'IBM Plex Mono', monospace;
 }
+
+.placeholder button {
+  margin-top: 12px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--text-hi);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.placeholder button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.output {
+  margin-top: 16px;
+  max-width: 640px;
+  max-height: 320px;
+  overflow: auto;
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-hi);
+  white-space: pre-wrap;
+}
