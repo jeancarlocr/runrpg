@@ -120,7 +120,7 @@ export class SshSession extends EventEmitter {
     }, delay)
   }
 
-  /** Ends the session on purpose. Does not trigger automatic reconnection. */
+  /** Sets explicitDisconnect first so handleUnexpectedClose skips the reconnect. */
   async disconnect(): Promise<void> {
     this.explicitDisconnect = true
 
@@ -135,11 +135,6 @@ export class SshSession extends EventEmitter {
     this.setStatus('idle')
   }
 
-  /**
-   * Runs a command on a fresh `exec` channel over the persistent connection
-   * and resolves with its real exit code / stdout / stderr (native ssh2
-   * event), not by timing or by a text marker.
-   */
   async runCommand(command: string, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS): Promise<CommandResult> {
     const task = this.queue.then(() => this.executeOne(command, timeoutMs))
     // If this command fails, it shouldn't break the queue for the next ones.
