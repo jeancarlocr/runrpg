@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { registerSshIpc } from './ssh/ipc'
+import { registerRpgIpc } from './ssh/rpgIpc'
 import { sshSession } from './ssh/sshSession'
 
 function createWindow(): void {
@@ -24,6 +25,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerSshIpc()
+  registerRpgIpc()
   createWindow()
 
   app.on('activate', function () {

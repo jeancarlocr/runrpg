@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { SSH_CHANNELS } from '../shared/ssh-types'
 import type { CommandResult, ConnectResult, SshStatusPayload } from '../shared/ssh-types'
+import { RPG_CHANNELS } from '../shared/rpg-types'
+import type { RunRpgResult } from '../shared/rpg-types'
 
 // Only bridge to the main process: the renderer never imports ssh2 or
 // touches credentials, it only invokes these methods over IPC.
@@ -15,5 +17,8 @@ contextBridge.exposeInMainWorld('runrpg', {
       ipcRenderer.on(SSH_CHANNELS.STATUS, listener)
       return () => ipcRenderer.removeListener(SSH_CHANNELS.STATUS, listener)
     }
+  },
+  rpg: {
+    run: (sourceCode: string): Promise<RunRpgResult> => ipcRenderer.invoke(RPG_CHANNELS.RUN, sourceCode)
   }
 })

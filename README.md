@@ -2,10 +2,17 @@
 
 Desktop scratchpad for practicing RPG Full Free against a real IBM i, RunJS-style.
 
-## Current status: Phase 1 — Persistent SSH session
+## Current status: Phase 2 — Compile & run pipeline
 
-Electron + Vite + React + TypeScript scaffold, plus a persistent SSH connection
-to IBM i (tested against pub400.com) with an exec-per-command runner.
+Electron + Vite + React + TypeScript scaffold, a persistent SSH connection to
+IBM i (tested against pub400.com), and a compile/run pipeline: write an RPG
+Full Free snippet, click Run, see the compile result and its output.
+
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the non-obvious decisions
+behind this (why there's a whole SQL CLI session involved, why snippets call
+`runrpg_out()` instead of `dsply`, CCSID gotchas) — several assumptions that
+looked reasonable turned out to be wrong once tested against a real system,
+and that file has the evidence so nobody has to redo the investigation.
 
 ## How to run it
 
@@ -14,8 +21,10 @@ npm install
 npm run dev
 ```
 
-This should open an Electron window. Click "Test SSH" to connect and run a
-couple of diagnostic CL commands (see `src/main/ssh/sshSession.ts`).
+This should open an Electron window with a text area holding a sample RPG
+snippet. Click "Run" to connect, compile, and run it against pub400 (see
+`src/main/ssh/rpgRunner.ts`). Snippets must call `runrpg_out('text')` instead
+of `dsply` to produce visible output — see ARCHITECTURE.md §3 for why.
 
 Before that, copy the credentials template and fill in your pub400 account:
 
@@ -38,8 +47,10 @@ at https://pub400.com — it's free and meant for testing like this.
 
 See the shared RunRPG roadmap for the day-by-day detail of the next phases:
 
-1. **Phase 1** (days 2-5): persistent SSH session against pub400.
-2. **Phase 2** (days 6-10): compile → run → capture output pipeline (DSPLY via job log).
+1. **Phase 1** (days 2-5): persistent SSH session against pub400. ✅
+2. **Phase 2** (days 6-10): compile → run → capture output pipeline. ✅ (output
+   capture ended up going through `runrpg_out()` + IFS, not DSPLY/job log —
+   see ARCHITECTURE.md)
 3. **Phase 3** (days 11-15): real UI (Monaco editor + console panel).
 4. **Phase 4** (days 16-18): wrap-up, packaging and practice exercises.
 

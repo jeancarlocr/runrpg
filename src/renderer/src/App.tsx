@@ -10,10 +10,16 @@ const STATUS_LABEL: Record<SshStatus, string> = {
   error: 'error'
 }
 
+const DEFAULT_SNIPPET = `**free
+runrpg_out('Hello from RunRPG');
+*inlr = *on;
+`
+
 export default function App() {
   const [status, setStatus] = useState<SshStatus>('idle')
   const [statusMessage, setStatusMessage] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
+  const [source, setSource] = useState(DEFAULT_SNIPPET)
   const [output, setOutput] = useState('')
 
   useEffect(() => {
@@ -23,22 +29,7 @@ export default function App() {
     })
   }, [])
 
-  async function runAndLog(command: string): Promise<boolean> {
-    setOutput((prev) => prev + `\n$ ${command}\n`)
-    const result = await window.runrpg.ssh.run(command)
-    console.log(`[runrpg] result ${command}`, result)
-
-    if (!result.ok) {
-      setOutput((prev) => prev + `(no response) ${result.message}\n`)
-      return false
-    }
-
-    const stderrLine = result.stderr ? ` [stderr: ${result.stderr}]` : ''
-    setOutput((prev) => prev + `(exit ${result.exitCode}) ${result.stdout}${stderrLine}\n`)
-    return true
-  }
-
-  async function handleTestClick(): Promise<void> {
+  async function handleRunClick(): Promise<void> {
     setBusy(true)
     setOutput('Connecting...\n')
     try {
@@ -47,15 +38,29 @@ export default function App() {
         setOutput((prev) => prev + `Error connecting: ${connectResult.message}\n`)
         return
       }
-      setOutput((prev) => prev + 'Connected.\n')
+      setOutput((prev) => prev + 'Connected. Compiling and running...\n')
 
-      // Isolates whether the problem is specific to OUTPUT(*PRINT)/spool:
-      // neither of these two commands touches the screen or spool, both
-      // should complete almost instantly, one succeeding and the other
-      // failing on purpose.
-      const ok1 = await runAndLog("system 'ADDLIBLE LIB(QGPL)'")
-      if (!ok1) return
-      await runAndLog("system 'CHKOBJ OBJ(QSYS/NOEXISTE123) OBJTYPE(*LIB)'")
+      const result = await window.runrpg.rpg.run(source)
+      console.log('[runrpg] run result', result)
+
+      if (!result.compiled) {
+        setOutput(
+          (prev) =>
+            prev +
+            '\nCompile failed.\n' +
+            (result.compileErrors?.length ? result.compileErrors.join('\n') + '\n' : '') +
+            (result.error ? `${result.error}\n` : '')
+        )
+        return
+      }
+
+      setOutput(
+        (prev) =>
+          prev +
+          '\nCompiled OK.\n' +
+          (result.output ? `--- output ---\n${result.output}` : '(no output)\n') +
+          (result.error ? `\n${result.error}\n` : '')
+      )
     } finally {
       setBusy(false)
     }
@@ -71,17 +76,22 @@ export default function App() {
         </span>
       </header>
 
-      <main className="placeholder">
-        <h1>Day 1 ✅ / Phase 1 in progress</h1>
-        <p>
-          Persistent SSH session against pub400 (PASE/bash,{' '}
-          <code>/QOpenSys/usr/bin/system</code>). Manual smoke test: connects and runs two
-          trivial CL commands without OUTPUT(*PRINT) to isolate whether spool was the cause
-          of the timeouts.
+      <main className="workspace">
+        <p className="hint">
+          Phase 2: compiles this snippet against pub400 and runs it. Use{' '}
+          <code>runrpg_out(&apos;text&apos;)</code> instead of <code>dsply</code> to print — see{' '}
+          <code>ARCHITECTURE.md</code> for why.
         </p>
 
-        <button onClick={handleTestClick} disabled={busy}>
-          {busy ? 'Running...' : 'Test SSH'}
+        <textarea
+          className="source-editor"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          spellCheck={false}
+        />
+
+        <button onClick={handleRunClick} disabled={busy}>
+          {busy ? 'Running...' : 'Run'}
         </button>
 
         {output && <pre className="output">{output}</pre>}

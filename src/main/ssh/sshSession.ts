@@ -1,6 +1,7 @@
 import { Client } from 'ssh2'
 import { EventEmitter } from 'events'
 import { loadSshConfig } from './config'
+import { Db2Session } from './db2Session'
 import type { CommandResult, SshStatus, SshStatusPayload } from '../../shared/ssh-types'
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 15000]
@@ -13,9 +14,13 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 20000
  * command runs on its own `exec` channel over that same connection (same
  * pattern used by Code for IBM i / vscode-ibmi): no pty and no text-marker
  * parsing needed, ssh2 delivers native exit code, stdout and stderr when the
- * exec channel closes. Since every exec travels over the same connection,
- * they all keep mapping to the same PASE job on IBM i, so QTEMP persists
- * across commands.
+ * exec channel closes.
+ *
+ * `runCommand()` is fine for independent one-off commands, but QTEMP does
+ * NOT persist between separate calls to it — confirmed by testing, contrary
+ * to what you'd expect from "one connection = one job." See ARCHITECTURE.md
+ * §2 for the evidence. Anything that needs state to survive across steps
+ * (like compile-then-call) must go through `withDb2Session()` instead.
  */
 export class SshSession extends EventEmitter {
   private client: Client | null = null
@@ -203,6 +208,63 @@ export class SshSession extends EventEmitter {
         })
       })
     })
+  }
+
+  /** Uploads text as a UTF-8 stream file over SFTP (reuses this connection, no new login). */
+  async uploadText(remotePath: string, text: string): Promise<void> {
+    const client = this.requireClient()
+    await new Promise<void>((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err) {
+          reject(err)
+          return
+        }
+        const stream = sftp.createWriteStream(remotePath)
+        stream.on('close', resolve)
+        stream.on('error', reject)
+        stream.end(Buffer.from(text, 'utf-8'))
+      })
+    })
+  }
+
+  /** Downloads a remote file over SFTP and decodes it as UTF-8. */
+  async downloadText(remotePath: string): Promise<string> {
+    const client = this.requireClient()
+    return new Promise<string>((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err) {
+          reject(err)
+          return
+        }
+        const chunks: Buffer[] = []
+        const stream = sftp.createReadStream(remotePath)
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
+        stream.on('error', reject)
+      })
+    })
+  }
+
+  /**
+   * Opens a throwaway Db2 for i SQL session (see db2Session.ts), hands it to
+   * `fn`, and always closes it afterward — this is the only way multi-step
+   * work (compile then call) can share one QTEMP on this system.
+   */
+  async withDb2Session<T>(fn: (db2: Db2Session) => Promise<T>): Promise<T> {
+    const client = this.requireClient()
+    const db2 = await Db2Session.start(client)
+    try {
+      return await fn(db2)
+    } finally {
+      await db2.close()
+    }
+  }
+
+  private requireClient(): Client {
+    if (this.status !== 'ready' || !this.client) {
+      throw new Error(`No active SSH session (current status: ${this.status}). Connect before running commands.`)
+    }
+    return this.client
   }
 
   private setStatus(status: SshStatus, message?: string): void {
