@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { sshSession } from './sshSession'
 import type { RunRpgResult } from '../../shared/rpg-types'
 
-const REMOTE_DIR = '/tmp/runrpg'
+export const REMOTE_DIR = '/tmp/runrpg'
 
 /**
  * Builds the source actually sent to CRTBNDRPG: the user's snippet plus a
@@ -11,7 +11,7 @@ const REMOTE_DIR = '/tmp/runrpg'
  * type). Free-format RPG requires subprocedures to come after the mainline,
  * so the prototype goes up top and the implementation at the bottom.
  */
-function buildFullSource(outPath: string, userSnippet: string): string {
+export function buildFullSource(outPath: string, userSnippet: string): string {
   const body = userSnippet.replace(/^\s*\*\*free\s*\r?\n/i, '').trimEnd()
 
   return [
@@ -66,7 +66,7 @@ function buildFullSource(outPath: string, userSnippet: string): string {
  * a header, a "---- ----" separator line, one row per line, then a
  * "N RECORD(S) SELECTED." footer. This keeps just the row lines.
  */
-function parseTableRows(tableText: string): string[] {
+export function parseTableRows(tableText: string): string[] {
   const lines = tableText.split('\n').map((line) => line.trimEnd())
   const separatorIndex = lines.findIndex((line) => /^-+(\s+-+)*$/.test(line.trim()))
   if (separatorIndex === -1) return []

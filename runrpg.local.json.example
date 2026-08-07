@@ -2,5 +2,6 @@
   "host": "pub400.com",
   "port": 22,
   "username": "YOUR_USERNAME",
-  "password": "YOUR_PASSWORD"
+  "password": "YOUR_PASSWORD",
+  "library": "YOUR_LIBRARY"
 }

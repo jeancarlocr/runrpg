@@ -3,6 +3,10 @@ import { SSH_CHANNELS } from '../shared/ssh-types'
 import type { CommandResult, ConnectResult, SshStatusPayload } from '../shared/ssh-types'
 import { RPG_CHANNELS } from '../shared/rpg-types'
 import type { RunRpgResult } from '../shared/rpg-types'
+import { PREFS_CHANNELS } from '../shared/prefs-types'
+import type { AppPrefs, SavePrefsResult } from '../shared/prefs-types'
+import { SAVED_CHANNELS } from '../shared/saved-types'
+import type { ListSavedResult, LoadSavedResult, SaveSnippetResult } from '../shared/saved-types'
 
 // Only bridge to the main process: the renderer never imports ssh2 or
 // touches credentials, it only invokes these methods over IPC.
@@ -20,5 +24,20 @@ contextBridge.exposeInMainWorld('runrpg', {
   },
   rpg: {
     run: (sourceCode: string): Promise<RunRpgResult> => ipcRenderer.invoke(RPG_CHANNELS.RUN, sourceCode)
+  },
+  prefs: {
+    get: (): Promise<AppPrefs | null> => ipcRenderer.invoke(PREFS_CHANNELS.GET),
+    save: (prefs: AppPrefs): Promise<SavePrefsResult> => ipcRenderer.invoke(PREFS_CHANNELS.SAVE, prefs),
+    onOpen: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on(PREFS_CHANNELS.OPEN, listener)
+      return () => ipcRenderer.removeListener(PREFS_CHANNELS.OPEN, listener)
+    }
+  },
+  saved: {
+    save: (name: string, sourceCode: string): Promise<SaveSnippetResult> =>
+      ipcRenderer.invoke(SAVED_CHANNELS.SAVE, name, sourceCode),
+    list: (): Promise<ListSavedResult> => ipcRenderer.invoke(SAVED_CHANNELS.LIST),
+    load: (name: string): Promise<LoadSavedResult> => ipcRenderer.invoke(SAVED_CHANNELS.LOAD, name)
   }
 })

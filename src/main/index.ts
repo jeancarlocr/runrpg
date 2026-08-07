@@ -1,8 +1,11 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { registerSshIpc } from './ssh/ipc'
 import { registerRpgIpc } from './ssh/rpgIpc'
+import { registerPrefsIpc } from './ssh/prefsIpc'
+import { registerSavedIpc } from './ssh/rpgSavedIpc'
 import { sshSession } from './ssh/sshSession'
+import { PREFS_CHANNELS } from '../shared/prefs-types'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -16,6 +19,35 @@ function createWindow(): void {
     }
   })
 
+  // autoHideMenuBar stays on (Alt still reveals it) to keep the custom dark
+  // titlebar clean — the native gray menu bar would clash with it. The
+  // CmdOrCtrl+, accelerator fires regardless of whether the bar is shown.
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [{ role: 'quit' }]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => win.webContents.send(PREFS_CHANNELS.OPEN)
+        }
+      ]
+    }
+  ])
+  Menu.setApplicationMenu(menu)
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -26,6 +58,8 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerSshIpc()
   registerRpgIpc()
+  registerPrefsIpc()
+  registerSavedIpc()
   createWindow()
 
   app.on('activate', function () {
