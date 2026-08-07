@@ -1,0 +1,75 @@
+:root {
+  --bg-app: #0f1216;
+  --bg-panel: #161b21;
+  --line: #242c34;
+  --text-hi: #e7ebef;
+  --text-mid: #9aa7b2;
+  --phosphor: #5fe07d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-hi);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.app-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.titlebar {
+  height: 42px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--line);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+
+.conn-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-mid);
+}
+
+.conn-pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5b6772;
+}
+
+.placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+  color: var(--text-mid);
+}
+
+.placeholder h1 {
+  color: var(--phosphor);
+  font-family: 'IBM Plex Mono', monospace;
+}
