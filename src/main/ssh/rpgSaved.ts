@@ -95,8 +95,11 @@ export async function saveRpgSnippet(name: string, sourceCode: string): Promise<
       }
     }
 
-    const fullSource = buildFullSource(outPath, sourceCode)
-    await sshSession.uploadText(wrappedSrcPath, fullSource)
+    const built = buildFullSource(outPath, sourceCode)
+    if (!built.ok) {
+      return { ok: true, compiled: false, error: built.error }
+    }
+    await sshSession.uploadText(wrappedSrcPath, built.source)
     const wrappedTranscode = await sshSession.runCommand(
       `iconv -f UTF-8 -t IBM-037 ${wrappedSrcPath} > ${wrappedSrcPathEbcdic} && setccsid 37 ${wrappedSrcPathEbcdic}`
     )
@@ -276,8 +279,11 @@ export async function updateOriginalMember(
       }
     }
 
-    const fullSource = buildFullSource(outPath, sourceCode)
-    await sshSession.uploadText(wrappedSrcPath, fullSource)
+    const built = buildFullSource(outPath, sourceCode)
+    if (!built.ok) {
+      return { ok: false, compiled: false, error: built.error }
+    }
+    await sshSession.uploadText(wrappedSrcPath, built.source)
     const wrappedTranscode = await sshSession.runCommand(
       `iconv -f UTF-8 -t IBM-037 ${wrappedSrcPath} > ${wrappedSrcPathEbcdic} && setccsid 37 ${wrappedSrcPathEbcdic}`
     )

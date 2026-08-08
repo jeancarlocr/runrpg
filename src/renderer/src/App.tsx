@@ -410,9 +410,9 @@ export default function App() {
 
       <main className="workspace">
         <p className="hint">
-          Phase 2: compiles this snippet against pub400 and runs it. Use{' '}
-          <code>runrpg_out(&apos;text&apos;)</code> instead of <code>dsply</code> to print — see{' '}
-          <code>ARCHITECTURE.md</code> for why.
+          Compiles this snippet against pub400 and runs it. <code>DSPLY</code> is translated to{' '}
+          <code>runrpg_out()</code> automatically — interactive <code>DSPLY</code> (with a response field)
+          isn&apos;t supported.
         </p>
 
         <div className="editor-wrap">

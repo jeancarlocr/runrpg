@@ -1,64 +1,81 @@
 import { randomUUID } from 'crypto'
 import { sshSession } from './sshSession'
+import { translateDsply } from './dsplyTranslate'
 import type { RunRpgResult } from '../../shared/rpg-types'
 
 export const REMOTE_DIR = '/tmp/runrpg'
 
-/**
- * Builds the source actually sent to CRTBNDRPG: the user's snippet plus a
- * `runrpg_out()` subprocedure the snippet calls instead of DSPLY (see
- * ARCHITECTURE.md for why DSPLY output is unreachable on this connection
- * type). Free-format RPG requires subprocedures to come after the mainline,
- * so the prototype goes up top and the implementation at the bottom.
- */
-export function buildFullSource(outPath: string, userSnippet: string): string {
-  const body = userSnippet.replace(/^\s*\*\*free\s*\r?\n/i, '').trimEnd()
+export type BuildSourceResult = { ok: true; source: string } | { ok: false; error: string }
 
-  return [
-    '**free',
-    'dcl-pr runrpg_out;',
-    '  texto char(200) const;',
-    'end-pr;',
-    '',
-    body,
-    '',
-    'dcl-proc runrpg_out;',
-    '  dcl-pi *n;',
-    '    texto char(200) const;',
-    '  end-pi;',
-    '',
-    "  dcl-pr c_open int(10) extproc('open');",
-    '    path pointer value options(*string);',
-    '    oflag int(10) value;',
-    '    mode int(10) value options(*nopass);',
-    '  end-pr;',
-    "  dcl-pr c_write int(10) extproc('write');",
-    '    fd int(10) value;',
-    '    buf pointer value;',
-    '    count uns(10) value;',
-    '  end-pr;',
-    "  dcl-pr c_close int(10) extproc('close');",
-    '    fd int(10) value;',
-    '  end-pr;',
-    '',
-    '  dcl-s fd int(10);',
-    '  dcl-s buf char(256);',
-    '  dcl-s len uns(10);',
-    '  dcl-c O_WRONLY 2;',
-    '  dcl-c O_CREAT 8;',
-    '  dcl-c O_APPEND 256;',
-    "  dcl-c NL x'25';",
-    '',
-    '  buf = %trimr(texto) + NL;',
-    '  len = %len(%trimr(texto)) + 1;',
-    `  fd = c_open('${outPath}': O_WRONLY + O_CREAT + O_APPEND: 420);`,
-    '  if fd >= 0;',
-    '    callp c_write(fd: %addr(buf): len);',
-    '    callp c_close(fd);',
-    '  endif;',
-    'end-proc;',
-    ''
-  ].join('\n')
+/**
+ * Builds the source actually sent to CRTBNDRPG: the user's snippet (with any
+ * DSPLY statements translated to runrpg_out() calls — see dsplyTranslate.ts)
+ * plus a `runrpg_out()` subprocedure for it to call instead (see
+ * ARCHITECTURE.md for why DSPLY's own output is unreachable on this
+ * connection type). Free-format RPG requires subprocedures to come after the
+ * mainline, so the prototype goes up top and the implementation at the
+ * bottom. This is the one place all four compile paths (Run, Save, Test
+ * Procedure, Update original) funnel through, so the DSPLY translation only
+ * needs to live here.
+ */
+export function buildFullSource(outPath: string, userSnippet: string): BuildSourceResult {
+  // Translate BEFORE stripping **free, not after — so line numbers in a
+  // rejection message match what the user actually sees in the editor
+  // (where **free counts as line 1), not an index into the stripped body.
+  const translated = translateDsply(userSnippet)
+  if (!translated.ok) {
+    return { ok: false, error: translated.error }
+  }
+  const body = translated.source.replace(/^\s*\*\*free\s*\r?\n/i, '').trimEnd()
+
+  return {
+    ok: true,
+    source: [
+      '**free',
+      'dcl-pr runrpg_out;',
+      '  texto char(200) const;',
+      'end-pr;',
+      '',
+      body,
+      '',
+      'dcl-proc runrpg_out;',
+      '  dcl-pi *n;',
+      '    texto char(200) const;',
+      '  end-pi;',
+      '',
+      "  dcl-pr c_open int(10) extproc('open');",
+      '    path pointer value options(*string);',
+      '    oflag int(10) value;',
+      '    mode int(10) value options(*nopass);',
+      '  end-pr;',
+      "  dcl-pr c_write int(10) extproc('write');",
+      '    fd int(10) value;',
+      '    buf pointer value;',
+      '    count uns(10) value;',
+      '  end-pr;',
+      "  dcl-pr c_close int(10) extproc('close');",
+      '    fd int(10) value;',
+      '  end-pr;',
+      '',
+      '  dcl-s fd int(10);',
+      '  dcl-s buf char(256);',
+      '  dcl-s len uns(10);',
+      '  dcl-c O_WRONLY 2;',
+      '  dcl-c O_CREAT 8;',
+      '  dcl-c O_APPEND 256;',
+      "  dcl-c NL x'25';",
+      '',
+      '  buf = %trimr(texto) + NL;',
+      '  len = %len(%trimr(texto)) + 1;',
+      `  fd = c_open('${outPath}': O_WRONLY + O_CREAT + O_APPEND: 420);`,
+      '  if fd >= 0;',
+      '    callp c_write(fd: %addr(buf): len);',
+      '    callp c_close(fd);',
+      '  endif;',
+      'end-proc;',
+      ''
+    ].join('\n')
+  }
 }
 
 /**
@@ -118,8 +135,11 @@ export async function runRpgSnippet(sourceCode: string): Promise<RunRpgResult> {
   try {
     await sshSession.runCommand(`mkdir -p ${REMOTE_DIR}`)
 
-    const fullSource = buildFullSource(outPath, sourceCode)
-    await sshSession.uploadText(srcPath, fullSource)
+    const built = buildFullSource(outPath, sourceCode)
+    if (!built.ok) {
+      return { compiled: false, error: built.error }
+    }
+    await sshSession.uploadText(srcPath, built.source)
 
     const transcode = await sshSession.runCommand(
       `iconv -f UTF-8 -t IBM-037 ${srcPath} > ${srcPathEbcdic} && setccsid 37 ${srcPathEbcdic}`
