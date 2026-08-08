@@ -2,6 +2,7 @@ import type { CommandResult, ConnectResult, SshStatusPayload } from '../../share
 import type { RunRpgResult } from '../../shared/rpg-types'
 import type { AppPrefs, SavePrefsResult } from '../../shared/prefs-types'
 import type { ListSavedResult, LoadSavedResult, SaveSnippetResult } from '../../shared/saved-types'
+import type { ListFilesResult } from '../../shared/open-types'
 
 export {}
 
@@ -27,6 +28,12 @@ declare global {
         save: (name: string, sourceCode: string) => Promise<SaveSnippetResult>
         list: () => Promise<ListSavedResult>
         load: (name: string) => Promise<LoadSavedResult>
+        updateOriginal: (library: string, file: string, name: string, sourceCode: string) => Promise<SaveSnippetResult>
+      }
+      open: {
+        listFiles: (library: string) => Promise<ListFilesResult>
+        listMembers: (library: string, file: string) => Promise<ListSavedResult>
+        loadMember: (library: string, file: string, name: string) => Promise<LoadSavedResult>
       }
     }
   }

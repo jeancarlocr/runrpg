@@ -227,6 +227,22 @@ Don't hardcode 273 either; `rpgRunner.ts` reads the real value with
 `attr <path> CCSID` before converting, so this keeps working if a different
 account/job ends up with a different default.
 
+## 7. pub400's QSYS2 SQL Services catalogs can change column names without notice
+
+`listMembers()` (`rpgSaved.ts`) queried `QSYS2.SYSPARTITIONSTAT` for a column
+called `PARTITION_CREATE_TIMESTAMP`. That worked when it was first written
+and tested, then started failing with `SQLSTATE 42703: Column ... not
+found` — confirmed the real column is `CREATE_TIMESTAMP` via
+`QSYS2.SYSCOLUMNS`, no `PARTITION_` prefix. The query text hadn't changed
+(checked git history); the system had. The same day, the 5250 welcome
+banner mentioned scheduled Sunday maintenance and active work on
+`*ADMIN1`/Debug Service — pub400 is a shared, publicly-administered
+practice system, and its QSYS2 SQL Services catalogs get revised across
+IBM's PTF/TR updates without any notice reaching this codebase. If a
+`qsys2.*` query that used to work suddenly throws a "column/object not
+found" SQLSTATE, re-verify the column/catalog name with
+`QSYS2.SYSCOLUMNS`/`QSYS2.SYSTABLES` before assuming the code regressed.
+
 ## Open questions / good next investigations
 
 - Detailed (per-line) compile error messages without losing QTEMP

@@ -4,12 +4,20 @@
 export const SAVED_CHANNELS = {
   SAVE: 'saved:save',
   LIST: 'saved:list',
-  LOAD: 'saved:load'
+  LOAD: 'saved:load',
+  UPDATE_ORIGINAL: 'saved:updateOriginal'
 } as const
+
+// The library/RUNRPGSRC target is RunRPG's own scratchpad. Shared between
+// main (rpgSaved.ts) and renderer (App.tsx, to tell a RunRPG-owned load
+// apart from a third-party one loaded via "Open…") so the literal can't
+// drift between the two.
+export const RUNRPG_SOURCE_FILE = 'RUNRPGSRC'
 
 export interface SavedSnippetInfo {
   name: string
   savedAt: string
+  sourceType: string | null
 }
 
 export interface SaveSnippetResult {

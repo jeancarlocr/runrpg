@@ -3,10 +3,12 @@ import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditorNs } from 'monaco-editor'
 import type { SshStatus } from '../../shared/ssh-types'
 import type { AppPrefs } from '../../shared/prefs-types'
+import { RUNRPG_SOURCE_FILE } from '../../shared/saved-types'
 import { RPGLE_LANGUAGE_ID, RPGLE_THEME_ID, registerRpgleLanguage } from './monaco/rpgle'
 import Preferences from './Preferences'
-import SaveDialog from './SaveDialog'
+import SaveDialog, { type SnippetOrigin } from './SaveDialog'
 import SavedPrograms from './SavedPrograms'
+import OpenDialog from './OpenDialog'
 import NewProgramDialog from './NewProgramDialog'
 import TestProcedureDialog from './TestProcedureDialog'
 import { buildProgramSkeleton } from './rpgTemplate'
@@ -28,7 +30,7 @@ runrpg_out('Hello from RunRPG');
 `
 
 type RunOutcome =
-  | { kind: 'success'; output: string; warning?: string; durationMs: number }
+  | { kind: 'success'; output: string; warning?: string; durationMs?: number }
   | { kind: 'error'; errors: string[]; message?: string; durationMs?: number }
 
 function dedupConsecutive(lines: string[]): string[] {
@@ -47,8 +49,13 @@ export default function App() {
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [savedOpen, setSavedOpen] = useState(false)
+  const [openDialogOpen, setOpenDialogOpen] = useState(false)
   const [newProgramOpen, setNewProgramOpen] = useState(false)
   const [testProcTarget, setTestProcTarget] = useState<{ proc: ParsedProc; firstProcLine: number } | null>(null)
+  // Set only when the editor's content came from "Open…" pointing at a
+  // library/file other than RunRPG's own — lets "Save" offer to update that
+  // real member in place instead of always writing a new RUNRPGSRC snippet.
+  const [origin, setOrigin] = useState<SnippetOrigin | null>(null)
 
   const sourceRef = useRef(source)
   sourceRef.current = source
@@ -165,8 +172,10 @@ export default function App() {
         return
       }
 
-      // The source member was written regardless of compile outcome.
+      // The source member was written regardless of compile outcome. This
+      // snippet now lives in RUNRPGSRC under `name`, so it's RunRPG-owned.
       savedBaselineRef.current = sourceRef.current
+      setOrigin(null)
 
       if (!saveResult.compiled) {
         setResult({
@@ -179,6 +188,57 @@ export default function App() {
       }
 
       setResult({ kind: 'success', output: `Saved and compiled "${name}".`, durationMs })
+    } finally {
+      setBusy(false)
+      setLoadingLabel(null)
+    }
+  }
+
+  async function handleUpdateOriginalConfirm(): Promise<void> {
+    setSaveDialogOpen(false)
+    if (!origin || busyRef.current) return
+    setBusy(true)
+    setResult(null)
+    setLoadingLabel('Connecting…')
+    const start = performance.now()
+
+    try {
+      const connectResult = await window.runrpg.ssh.connect()
+      if (!connectResult.ok) {
+        setResult({
+          kind: 'error',
+          errors: [],
+          message: `Error connecting: ${connectResult.message}`,
+          durationMs: performance.now() - start
+        })
+        return
+      }
+
+      setLoadingLabel('Compiling & updating original…')
+      const updateResult = await window.runrpg.saved.updateOriginal(
+        origin.library,
+        origin.file,
+        origin.name,
+        sourceRef.current
+      )
+      const durationMs = performance.now() - start
+
+      if (!updateResult.ok) {
+        setResult({
+          kind: 'error',
+          errors: dedupConsecutive(updateResult.compileErrors ?? []),
+          message: updateResult.error ?? `Could not update ${origin.library}/${origin.file}/${origin.name}.`,
+          durationMs
+        })
+        return
+      }
+
+      savedBaselineRef.current = sourceRef.current
+      setResult({
+        kind: 'success',
+        output: `Updated ${origin.library}/${origin.file}(${origin.name}).`,
+        durationMs
+      })
     } finally {
       setBusy(false)
       setLoadingLabel(null)
@@ -220,6 +280,60 @@ export default function App() {
       const loadedSource = loadResult.source ?? ''
       setSource(loadedSource)
       savedBaselineRef.current = loadedSource
+      setOrigin(null)
+    } finally {
+      setBusy(false)
+      setLoadingLabel(null)
+    }
+  }
+
+  async function handleOpenSelect(library: string, file: string, name: string): Promise<void> {
+    setOpenDialogOpen(false)
+    if (busyRef.current) return
+    setBusy(true)
+    setResult(null)
+    setLoadingLabel('Connecting…')
+    const start = performance.now()
+
+    try {
+      const connectResult = await window.runrpg.ssh.connect()
+      if (!connectResult.ok) {
+        setResult({
+          kind: 'error',
+          errors: [],
+          message: `Error connecting: ${connectResult.message}`,
+          durationMs: performance.now() - start
+        })
+        return
+      }
+
+      setLoadingLabel('Loading…')
+      const loadResult = await window.runrpg.open.loadMember(library, file, name)
+      if (!loadResult.ok) {
+        setResult({
+          kind: 'error',
+          errors: [],
+          message: loadResult.message ?? 'Could not load that member.',
+          durationMs: performance.now() - start
+        })
+        return
+      }
+
+      const loadedSource = loadResult.source ?? ''
+      setSource(loadedSource)
+      savedBaselineRef.current = loadedSource
+
+      const isRunrpgOwned =
+        library.toUpperCase() === (prefs?.library ?? '').toUpperCase() &&
+        file.toUpperCase() === RUNRPG_SOURCE_FILE
+      setOrigin(isRunrpgOwned ? null : { library, file, name })
+
+      setResult({
+        kind: 'success',
+        output: `Loaded ${library}/${file}(${name}).`,
+        warning:
+          "This wasn't necessarily written for RunRPG (no runrpg_out, may use DSPLY) — it might not compile as-is."
+      })
     } finally {
       setBusy(false)
       setLoadingLabel(null)
@@ -230,6 +344,7 @@ export default function App() {
     setNewProgramOpen(false)
     setSource(buildProgramSkeleton(procNames))
     setResult(null)
+    setOrigin(null)
   }
 
   function handleTestProcedureClick(): void {
@@ -330,6 +445,9 @@ export default function App() {
           <button className="ghost-button" onClick={() => setSavedOpen(true)} disabled={busy}>
             Saved…
           </button>
+          <button className="ghost-button" onClick={() => setOpenDialogOpen(true)} disabled={busy}>
+            Open…
+          </button>
           <button className="ghost-button" onClick={() => setNewProgramOpen(true)} disabled={busy}>
             New Program
           </button>
@@ -361,8 +479,16 @@ export default function App() {
       </main>
 
       {prefsOpen && <Preferences onClose={() => setPrefsOpen(false)} onSaved={setPrefs} />}
-      {saveDialogOpen && <SaveDialog onClose={() => setSaveDialogOpen(false)} onConfirm={handleSaveConfirm} />}
+      {saveDialogOpen && (
+        <SaveDialog
+          origin={origin}
+          onClose={() => setSaveDialogOpen(false)}
+          onSaveNew={handleSaveConfirm}
+          onUpdateOriginal={handleUpdateOriginalConfirm}
+        />
+      )}
       {savedOpen && <SavedPrograms onClose={() => setSavedOpen(false)} onSelect={handleSelectSaved} />}
+      {openDialogOpen && <OpenDialog onClose={() => setOpenDialogOpen(false)} onSelect={handleOpenSelect} />}
       {newProgramOpen && (
         <NewProgramDialog dirty={dirty} onClose={() => setNewProgramOpen(false)} onConfirm={handleGenerateConfirm} />
       )}

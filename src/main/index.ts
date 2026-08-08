@@ -4,6 +4,7 @@ import { registerSshIpc } from './ssh/ipc'
 import { registerRpgIpc } from './ssh/rpgIpc'
 import { registerPrefsIpc } from './ssh/prefsIpc'
 import { registerSavedIpc } from './ssh/rpgSavedIpc'
+import { registerOpenIpc } from './ssh/rpgExploreIpc'
 import { sshSession } from './ssh/sshSession'
 import { PREFS_CHANNELS } from '../shared/prefs-types'
 
@@ -60,6 +61,7 @@ app.whenReady().then(() => {
   registerRpgIpc()
   registerPrefsIpc()
   registerSavedIpc()
+  registerOpenIpc()
   createWindow()
 
   app.on('activate', function () {
