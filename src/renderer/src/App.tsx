@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
+import type { editor as MonacoEditorNs } from 'monaco-editor'
 import type { SshStatus } from '../../shared/ssh-types'
 import { RPGLE_LANGUAGE_ID, RPGLE_THEME_ID, registerRpgleLanguage } from './monaco/rpgle'
 import Preferences from './Preferences'
 import SaveDialog from './SaveDialog'
 import SavedPrograms from './SavedPrograms'
+import NewProgramDialog from './NewProgramDialog'
+import TestProcedureDialog from './TestProcedureDialog'
+import { buildProgramSkeleton } from './rpgTemplate'
+import { findProcAtLine, type ParsedProc } from './procParser'
+import { buildTestSource } from './testProcedure'
 
 const STATUS_LABEL: Record<SshStatus, string> = {
   idle: 'not connected',
@@ -22,7 +28,7 @@ runrpg_out('Hello from RunRPG');
 
 type RunOutcome =
   | { kind: 'success'; output: string; warning?: string; durationMs: number }
-  | { kind: 'error'; errors: string[]; message?: string; durationMs: number }
+  | { kind: 'error'; errors: string[]; message?: string; durationMs?: number }
 
 function dedupConsecutive(lines: string[]): string[] {
   return lines.filter((line, i) => i === 0 || line !== lines[i - 1])
@@ -39,11 +45,18 @@ export default function App() {
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [savedOpen, setSavedOpen] = useState(false)
+  const [newProgramOpen, setNewProgramOpen] = useState(false)
+  const [testProcTarget, setTestProcTarget] = useState<{ proc: ParsedProc; firstProcLine: number } | null>(null)
 
   const sourceRef = useRef(source)
   sourceRef.current = source
   const busyRef = useRef(busy)
   busyRef.current = busy
+  const editorRef = useRef<MonacoEditorNs.IStandaloneCodeEditor | null>(null)
+  // Tracks the last source that was actually persisted (saved or loaded),
+  // so "New Program" knows whether generating would discard real work.
+  const savedBaselineRef = useRef(DEFAULT_SNIPPET)
+  const dirty = source !== savedBaselineRef.current
 
   useEffect(() => {
     return window.runrpg.ssh.onStatus((payload) => {
@@ -56,7 +69,7 @@ export default function App() {
     return window.runrpg.prefs.onOpen(() => setPrefsOpen(true))
   }, [])
 
-  async function handleRunClick(): Promise<void> {
+  async function runSourceAndShowResult(sourceCode: string): Promise<void> {
     if (busyRef.current) return
     setBusy(true)
     setResult(null)
@@ -76,7 +89,7 @@ export default function App() {
       }
 
       setLoadingLabel('Compiling & running…')
-      const rpgResult = await window.runrpg.rpg.run(sourceRef.current)
+      const rpgResult = await window.runrpg.rpg.run(sourceCode)
       const durationMs = performance.now() - start
 
       if (!rpgResult.compiled) {
@@ -135,6 +148,9 @@ export default function App() {
         return
       }
 
+      // The source member was written regardless of compile outcome.
+      savedBaselineRef.current = sourceRef.current
+
       if (!saveResult.compiled) {
         setResult({
           kind: 'error',
@@ -184,17 +200,56 @@ export default function App() {
         return
       }
 
-      setSource(loadResult.source ?? '')
+      const loadedSource = loadResult.source ?? ''
+      setSource(loadedSource)
+      savedBaselineRef.current = loadedSource
     } finally {
       setBusy(false)
       setLoadingLabel(null)
     }
   }
 
-  const runRef = useRef(handleRunClick)
-  runRef.current = handleRunClick
+  function handleGenerateConfirm(procNames: string[]): void {
+    setNewProgramOpen(false)
+    setSource(buildProgramSkeleton(procNames))
+    setResult(null)
+  }
+
+  function handleTestProcedureClick(): void {
+    if (busyRef.current) return
+    const position = editorRef.current?.getPosition()
+    if (!position) {
+      setResult({ kind: 'error', errors: [], message: 'Place your cursor inside a procedure first.' })
+      return
+    }
+
+    const lines = sourceRef.current.split('\n')
+    const detected = findProcAtLine(lines, position.lineNumber)
+
+    if (!detected.ok) {
+      const message =
+        detected.error.kind === 'no-proc' ? 'Place your cursor inside a procedure first.' : detected.error.reason
+      setResult({ kind: 'error', errors: [], message })
+      return
+    }
+
+    setResult(null)
+    setTestProcTarget({ proc: detected.proc, firstProcLine: detected.firstProcLine })
+  }
+
+  function handleTestProcConfirm(values: Record<string, string>): void {
+    if (!testProcTarget) return
+    const { proc, firstProcLine } = testProcTarget
+    setTestProcTarget(null)
+    const syntheticSource = buildTestSource(sourceRef.current, proc, firstProcLine, values)
+    void runSourceAndShowResult(syntheticSource)
+  }
+
+  const runRef = useRef(() => runSourceAndShowResult(sourceRef.current))
+  runRef.current = () => runSourceAndShowResult(sourceRef.current)
 
   const handleEditorMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       runRef.current()
     })
@@ -238,7 +293,7 @@ export default function App() {
         </div>
 
         <div className="run-row">
-          <button onClick={handleRunClick} disabled={busy}>
+          <button onClick={() => runSourceAndShowResult(sourceRef.current)} disabled={busy}>
             {busy ? 'Running…' : 'Run'}
           </button>
           <button onClick={() => setSaveDialogOpen(true)} disabled={busy}>
@@ -247,9 +302,17 @@ export default function App() {
           <button className="ghost-button" onClick={() => setSavedOpen(true)} disabled={busy}>
             Saved…
           </button>
+          <button className="ghost-button" onClick={() => setNewProgramOpen(true)} disabled={busy}>
+            New Program
+          </button>
+          <button className="ghost-button" onClick={handleTestProcedureClick} disabled={busy}>
+            Test Procedure
+          </button>
           <span className="run-hint">Ctrl+Enter</span>
           {busy && loadingLabel && <span className="loading-label">{loadingLabel}</span>}
-          {!busy && result && <span className="duration">{(result.durationMs / 1000).toFixed(1)}s</span>}
+          {!busy && result && result.durationMs !== undefined && (
+            <span className="duration">{(result.durationMs / 1000).toFixed(1)}s</span>
+          )}
         </div>
 
         {result?.kind === 'success' && (
@@ -272,6 +335,16 @@ export default function App() {
       {prefsOpen && <Preferences onClose={() => setPrefsOpen(false)} />}
       {saveDialogOpen && <SaveDialog onClose={() => setSaveDialogOpen(false)} onConfirm={handleSaveConfirm} />}
       {savedOpen && <SavedPrograms onClose={() => setSavedOpen(false)} onSelect={handleSelectSaved} />}
+      {newProgramOpen && (
+        <NewProgramDialog dirty={dirty} onClose={() => setNewProgramOpen(false)} onConfirm={handleGenerateConfirm} />
+      )}
+      {testProcTarget && (
+        <TestProcedureDialog
+          proc={testProcTarget.proc}
+          onClose={() => setTestProcTarget(null)}
+          onConfirm={handleTestProcConfirm}
+        />
+      )}
     </div>
   )
 }
