@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditorNs } from 'monaco-editor'
 import type { SshStatus } from '../../shared/ssh-types'
+import type { AppPrefs } from '../../shared/prefs-types'
 import { RPGLE_LANGUAGE_ID, RPGLE_THEME_ID, registerRpgleLanguage } from './monaco/rpgle'
 import Preferences from './Preferences'
 import SaveDialog from './SaveDialog'
@@ -37,6 +38,7 @@ function dedupConsecutive(lines: string[]): string[] {
 export default function App() {
   const [status, setStatus] = useState<SshStatus>('idle')
   const [statusMessage, setStatusMessage] = useState<string | undefined>()
+  const [prefs, setPrefs] = useState<AppPrefs | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null)
   const [source, setSource] = useState(DEFAULT_SNIPPET)
@@ -68,6 +70,21 @@ export default function App() {
   useEffect(() => {
     return window.runrpg.prefs.onOpen(() => setPrefsOpen(true))
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    window.runrpg.prefs.get().then((loaded) => {
+      if (!cancelled) setPrefs(loaded)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleConnectClick(): Promise<void> {
+    if (status === 'ready' || status === 'connecting' || status === 'reconnecting') return
+    await window.runrpg.ssh.connect()
+  }
 
   async function runSourceAndShowResult(sourceCode: string): Promise<void> {
     if (busyRef.current) return
@@ -259,10 +276,21 @@ export default function App() {
     <div className="app-shell">
       <header className="titlebar">
         <span>RunRPG</span>
-        <span className="conn-pill">
-          <span className="dot" /> {STATUS_LABEL[status]}
-          {statusMessage ? ` — ${statusMessage}` : ''}
-        </span>
+        <div className="titlebar-right">
+          <span className="conn-pill">
+            <span className={`dot dot-${status}`} />
+            {status === 'ready'
+              ? `${prefs?.username || '—'}@${prefs?.host || '—'} · ${prefs?.library || 'not set'}`
+              : STATUS_LABEL[status] + (statusMessage ? ` — ${statusMessage}` : '')}
+          </span>
+          <button
+            className="connect-button"
+            onClick={handleConnectClick}
+            disabled={status === 'ready' || status === 'connecting' || status === 'reconnecting'}
+          >
+            {status === 'ready' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting…' : 'Connect'}
+          </button>
+        </div>
       </header>
 
       <main className="workspace">
@@ -332,7 +360,7 @@ export default function App() {
         )}
       </main>
 
-      {prefsOpen && <Preferences onClose={() => setPrefsOpen(false)} />}
+      {prefsOpen && <Preferences onClose={() => setPrefsOpen(false)} onSaved={setPrefs} />}
       {saveDialogOpen && <SaveDialog onClose={() => setSaveDialogOpen(false)} onConfirm={handleSaveConfirm} />}
       {savedOpen && <SavedPrograms onClose={() => setSavedOpen(false)} onSelect={handleSelectSaved} />}
       {newProgramOpen && (

@@ -46,6 +46,12 @@ body {
   font-size: 13px;
 }
 
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .conn-pill {
   display: flex;
   align-items: center;
@@ -59,6 +65,35 @@ body {
   height: 7px;
   border-radius: 50%;
   background: #5b6772;
+}
+
+.conn-pill .dot-ready {
+  background: var(--phosphor);
+}
+
+.conn-pill .dot-connecting,
+.conn-pill .dot-reconnecting {
+  background: var(--amber);
+}
+
+.conn-pill .dot-error {
+  background: #e0615f;
+}
+
+.connect-button {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--bg-app);
+  color: var(--text-hi);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.connect-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .workspace {

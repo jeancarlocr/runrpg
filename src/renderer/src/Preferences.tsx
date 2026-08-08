@@ -12,7 +12,13 @@ interface FormState {
 
 const EMPTY_FORM: FormState = { host: '', port: '', username: '', password: '', library: '' }
 
-export default function Preferences({ onClose }: { onClose: () => void }) {
+export default function Preferences({
+  onClose,
+  onSaved
+}: {
+  onClose: () => void
+  onSaved?: (prefs: AppPrefs) => void
+}) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +81,7 @@ export default function Preferences({ onClose }: { onClose: () => void }) {
         setError(result.message ?? 'Could not save preferences.')
         return
       }
+      onSaved?.(prefs)
       onClose()
     } finally {
       setSaving(false)
