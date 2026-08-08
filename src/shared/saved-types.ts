@@ -3,8 +3,6 @@
 
 export const SAVED_CHANNELS = {
   SAVE: 'saved:save',
-  LIST: 'saved:list',
-  LOAD: 'saved:load',
   UPDATE_ORIGINAL: 'saved:updateOriginal'
 } as const
 

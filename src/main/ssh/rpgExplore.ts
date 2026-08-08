@@ -1,6 +1,7 @@
 import { sshSession } from './sshSession'
 import { parseTableRows } from './rpgRunner'
 import { isValidObjectName } from '../../shared/ibmiNames'
+import { checkLibraryExists } from './ibmiChecks'
 import type { ListFilesResult, SourceFileInfo } from '../../shared/open-types'
 
 /**
@@ -19,9 +20,9 @@ export async function listLibrarySourceFiles(library: string): Promise<ListFiles
 
   // SYSTABLES silently returns zero rows for a library that doesn't exist —
   // it can't tell "empty" apart from "not found" on its own, so check first.
-  const exists = await sshSession.runCommand(`system "CHKOBJ OBJ(${lib}) OBJTYPE(*LIB)"`)
-  if (exists.exitCode !== 0) {
-    return { ok: false, message: `Library ${lib} was not found (or you don't have authority to see it).` }
+  const libError = await checkLibraryExists(lib)
+  if (libError) {
+    return { ok: false, message: libError }
   }
 
   try {

@@ -37,10 +37,8 @@ contextBridge.exposeInMainWorld('runrpg', {
     }
   },
   saved: {
-    save: (name: string, sourceCode: string): Promise<SaveSnippetResult> =>
-      ipcRenderer.invoke(SAVED_CHANNELS.SAVE, name, sourceCode),
-    list: (): Promise<ListSavedResult> => ipcRenderer.invoke(SAVED_CHANNELS.LIST),
-    load: (name: string): Promise<LoadSavedResult> => ipcRenderer.invoke(SAVED_CHANNELS.LOAD, name),
+    save: (library: string, file: string, name: string, sourceCode: string): Promise<SaveSnippetResult> =>
+      ipcRenderer.invoke(SAVED_CHANNELS.SAVE, library, file, name, sourceCode),
     updateOriginal: (library: string, file: string, name: string, sourceCode: string): Promise<SaveSnippetResult> =>
       ipcRenderer.invoke(SAVED_CHANNELS.UPDATE_ORIGINAL, library, file, name, sourceCode)
   },

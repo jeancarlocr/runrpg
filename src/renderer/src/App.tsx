@@ -138,13 +138,14 @@ export default function App() {
     }
   }
 
-  async function handleSaveConfirm(name: string): Promise<void> {
+  async function handleSaveConfirm(library: string, file: string, name: string): Promise<void> {
     setSaveDialogOpen(false)
     if (busyRef.current) return
     setBusy(true)
     setResult(null)
     setLoadingLabel('Connecting…')
     const start = performance.now()
+    const target = `${library}/${file}(${name})`
 
     try {
       const connectResult = await window.runrpg.ssh.connect()
@@ -159,7 +160,7 @@ export default function App() {
       }
 
       setLoadingLabel('Saving…')
-      const saveResult = await window.runrpg.saved.save(name, sourceRef.current)
+      const saveResult = await window.runrpg.saved.save(library, file, name, sourceRef.current)
       const durationMs = performance.now() - start
 
       if (!saveResult.ok) {
@@ -173,7 +174,8 @@ export default function App() {
       }
 
       // The source member was written regardless of compile outcome. This
-      // snippet now lives in RUNRPGSRC under `name`, so it's RunRPG-owned.
+      // snippet is now its own thing, freshly saved — not tied to whatever
+      // origin it may have started from.
       savedBaselineRef.current = sourceRef.current
       setOrigin(null)
 
@@ -181,13 +183,13 @@ export default function App() {
         setResult({
           kind: 'error',
           errors: dedupConsecutive(saveResult.compileErrors ?? []),
-          message: `Source saved as "${name}", but it did not compile.`,
+          message: `Source saved as ${target}, but it did not compile.`,
           durationMs
         })
         return
       }
 
-      setResult({ kind: 'success', output: `Saved and compiled "${name}".`, durationMs })
+      setResult({ kind: 'success', output: `Saved and compiled ${target}.`, durationMs })
     } finally {
       setBusy(false)
       setLoadingLabel(null)
@@ -245,49 +247,12 @@ export default function App() {
     }
   }
 
-  async function handleSelectSaved(name: string): Promise<void> {
+  // Shared by "Saved…" and "Open…" — both end up doing exactly the same
+  // thing: load an arbitrary library/file/member and decide whether it's
+  // RunRPG's own scratchpad member (prefs.library/RUNRPGSRC) or a real
+  // object elsewhere that deserves origin-tracking ("Update original").
+  async function handleLoadMember(library: string, file: string, name: string): Promise<void> {
     setSavedOpen(false)
-    if (busyRef.current) return
-    setBusy(true)
-    setResult(null)
-    setLoadingLabel('Connecting…')
-    const start = performance.now()
-
-    try {
-      const connectResult = await window.runrpg.ssh.connect()
-      if (!connectResult.ok) {
-        setResult({
-          kind: 'error',
-          errors: [],
-          message: `Error connecting: ${connectResult.message}`,
-          durationMs: performance.now() - start
-        })
-        return
-      }
-
-      setLoadingLabel('Loading…')
-      const loadResult = await window.runrpg.saved.load(name)
-      if (!loadResult.ok) {
-        setResult({
-          kind: 'error',
-          errors: [],
-          message: loadResult.message ?? 'Could not load the snippet.',
-          durationMs: performance.now() - start
-        })
-        return
-      }
-
-      const loadedSource = loadResult.source ?? ''
-      setSource(loadedSource)
-      savedBaselineRef.current = loadedSource
-      setOrigin(null)
-    } finally {
-      setBusy(false)
-      setLoadingLabel(null)
-    }
-  }
-
-  async function handleOpenSelect(library: string, file: string, name: string): Promise<void> {
     setOpenDialogOpen(false)
     if (busyRef.current) return
     setBusy(true)
@@ -331,8 +296,9 @@ export default function App() {
       setResult({
         kind: 'success',
         output: `Loaded ${library}/${file}(${name}).`,
-        warning:
-          "This wasn't necessarily written for RunRPG (no runrpg_out, may use DSPLY) — it might not compile as-is."
+        warning: isRunrpgOwned
+          ? undefined
+          : "This wasn't necessarily written for RunRPG (no runrpg_out, may use DSPLY) — it might not compile as-is."
       })
     } finally {
       setBusy(false)
@@ -482,13 +448,20 @@ export default function App() {
       {saveDialogOpen && (
         <SaveDialog
           origin={origin}
+          defaultLibrary={prefs?.library ?? ''}
           onClose={() => setSaveDialogOpen(false)}
           onSaveNew={handleSaveConfirm}
           onUpdateOriginal={handleUpdateOriginalConfirm}
         />
       )}
-      {savedOpen && <SavedPrograms onClose={() => setSavedOpen(false)} onSelect={handleSelectSaved} />}
-      {openDialogOpen && <OpenDialog onClose={() => setOpenDialogOpen(false)} onSelect={handleOpenSelect} />}
+      {savedOpen && (
+        <SavedPrograms
+          defaultLibrary={prefs?.library ?? ''}
+          onClose={() => setSavedOpen(false)}
+          onSelect={handleLoadMember}
+        />
+      )}
+      {openDialogOpen && <OpenDialog onClose={() => setOpenDialogOpen(false)} onSelect={handleLoadMember} />}
       {newProgramOpen && (
         <NewProgramDialog dirty={dirty} onClose={() => setNewProgramOpen(false)} onConfirm={handleGenerateConfirm} />
       )}

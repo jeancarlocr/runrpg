@@ -1,10 +1,9 @@
 import { randomUUID } from 'crypto'
 import { sshSession } from './sshSession'
-import { loadSshConfig } from './config'
 import { buildFullSource, parseTableRows, REMOTE_DIR } from './rpgRunner'
 import { isValidObjectName } from '../../shared/ibmiNames'
+import { checkLibraryExists } from './ibmiChecks'
 import {
-  RUNRPG_SOURCE_FILE,
   type ListSavedResult,
   type LoadSavedResult,
   type SavedSnippetInfo,
@@ -15,44 +14,49 @@ function memberPath(library: string, file: string, name: string): string {
   return `/QSYS.LIB/${library}.LIB/${file}.FILE/${name}.MBR`
 }
 
-function requireLibrary(): string | { error: string } {
-  const config = loadSshConfig()
-  if (!config.library) {
-    return { error: 'Configure a library in Preferences (Ctrl+,) first.' }
-  }
-  return config.library.toUpperCase()
-}
-
-async function ensureSourceFile(library: string): Promise<string | undefined> {
-  const check = await sshSession.runCommand(`system "CHKOBJ OBJ(${library}/${RUNRPG_SOURCE_FILE}) OBJTYPE(*FILE)"`)
+async function ensureSourceFile(library: string, file: string): Promise<string | undefined> {
+  const check = await sshSession.runCommand(`system "CHKOBJ OBJ(${library}/${file}) OBJTYPE(*FILE)"`)
   if (check.exitCode === 0) return undefined
 
   const create = await sshSession.runCommand(
-    `system "CRTSRCPF FILE(${library}/${RUNRPG_SOURCE_FILE}) RCDLEN(112) TEXT('RunRPG saved snippets')"`
+    `system "CRTSRCPF FILE(${library}/${file}) RCDLEN(112) TEXT('RunRPG saved snippets')"`
   )
   if (create.exitCode !== 0) {
-    return `Could not create source file ${library}/${RUNRPG_SOURCE_FILE}: ${create.stdout || create.stderr || create.message}`
+    return `Could not create source file ${library}/${file}: ${create.stdout || create.stderr || create.message}`
   }
   return undefined
 }
 
 /**
- * Compiles a *PGM into the configured library and stores the RAW (unwrapped)
- * snippet as a member of RUNRPGSRC. The member holds exactly what's in the
- * editor — not the runrpg_out() wrapper injected at compile time — so
- * loading it back round-trips cleanly instead of re-wrapping an
+ * Compiles a *PGM into the chosen library and stores the RAW (unwrapped)
+ * snippet as a member of the chosen source file. The member holds exactly
+ * what's in the editor — not the runrpg_out() wrapper injected at compile
+ * time — so loading it back round-trips cleanly instead of re-wrapping an
  * already-wrapped snippet. The member is written even if the compile fails,
- * so work in progress isn't lost.
+ * so work in progress isn't lost. The library must already exist (this never
+ * creates libraries); the source file is auto-created via CRTSRCPF if missing,
+ * same as CRTSRCPF-on-demand for RunRPG's own scratchpad used to do.
  */
-export async function saveRpgSnippet(name: string, sourceCode: string): Promise<SaveSnippetResult> {
-  if (!isValidObjectName(name)) {
-    return { ok: false, compiled: false, error: 'Name must start with a letter and be at most 10 letters/digits.' }
+export async function saveRpgSnippet(
+  libraryInput: string,
+  fileInput: string,
+  name: string,
+  sourceCode: string
+): Promise<SaveSnippetResult> {
+  if (!isValidObjectName(libraryInput) || !isValidObjectName(fileInput) || !isValidObjectName(name)) {
+    return {
+      ok: false,
+      compiled: false,
+      error: 'Library, source file, and name must each start with a letter and be at most 10 letters/digits.'
+    }
   }
+  const library = libraryInput.toUpperCase()
+  const file = fileInput.toUpperCase()
   const pgmName = name.toUpperCase()
 
-  const library = requireLibrary()
-  if (typeof library !== 'string') {
-    return { ok: false, compiled: false, error: library.error }
+  const libError = await checkLibraryExists(library)
+  if (libError) {
+    return { ok: false, compiled: false, error: libError }
   }
 
   const sessionId = randomUUID().replace(/-/g, '').slice(0, 10)
@@ -79,13 +83,13 @@ export async function saveRpgSnippet(name: string, sourceCode: string): Promise<
       }
     }
 
-    const fileError = await ensureSourceFile(library)
+    const fileError = await ensureSourceFile(library, file)
     if (fileError) {
       return { ok: false, compiled: false, error: fileError }
     }
 
     const copyMember = await sshSession.runCommand(
-      `system "CPYFRMSTMF FROMSTMF('${rawSrcPathEbcdic}') TOMBR('${memberPath(library, RUNRPG_SOURCE_FILE, pgmName)}') MBROPT(*REPLACE) STMFCCSID(37)"`
+      `system "CPYFRMSTMF FROMSTMF('${rawSrcPathEbcdic}') TOMBR('${memberPath(library, file, pgmName)}') MBROPT(*REPLACE) STMFCCSID(37)"`
     )
     if (copyMember.exitCode !== 0) {
       return {
@@ -140,9 +144,9 @@ export async function saveRpgSnippet(name: string, sourceCode: string): Promise<
 }
 
 /**
- * Lists members of any library/source-file pair — used both by "Saved…"
- * (library from Preferences, file fixed to RUNRPGSRC) and by "Open…"
- * (both picked by the user, so validated here rather than trusting callers).
+ * Lists members of any library/source-file pair — used by both "Saved…" and
+ * "Open…", library and file always picked by the user (or defaulted in the
+ * renderer), so validated here rather than trusting callers.
  */
 export async function listMembers(library: string, file: string): Promise<ListSavedResult> {
   if (!isValidObjectName(library) || !isValidObjectName(file)) {
@@ -206,22 +210,6 @@ export async function loadMember(library: string, file: string, name: string): P
   } finally {
     await sshSession.runCommand(`rm -f ${outStmf}`)
   }
-}
-
-export async function listSavedSnippets(): Promise<ListSavedResult> {
-  const library = requireLibrary()
-  if (typeof library !== 'string') {
-    return { ok: false, message: library.error }
-  }
-  return listMembers(library, RUNRPG_SOURCE_FILE)
-}
-
-export async function loadSavedSnippet(name: string): Promise<LoadSavedResult> {
-  const library = requireLibrary()
-  if (typeof library !== 'string') {
-    return { ok: false, message: library.error }
-  }
-  return loadMember(library, RUNRPG_SOURCE_FILE, name)
 }
 
 /**

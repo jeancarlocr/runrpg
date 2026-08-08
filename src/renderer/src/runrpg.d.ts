@@ -25,9 +25,7 @@ declare global {
         onOpen: (callback: () => void) => () => void
       }
       saved: {
-        save: (name: string, sourceCode: string) => Promise<SaveSnippetResult>
-        list: () => Promise<ListSavedResult>
-        load: (name: string) => Promise<LoadSavedResult>
+        save: (library: string, file: string, name: string, sourceCode: string) => Promise<SaveSnippetResult>
         updateOriginal: (library: string, file: string, name: string, sourceCode: string) => Promise<SaveSnippetResult>
       }
       open: {
